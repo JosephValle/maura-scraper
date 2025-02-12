@@ -1,7 +1,7 @@
 import os
 from flask import Flask, request, jsonify
 from database import SessionLocal, init_db, Article
-from scheduler import start_scheduler
+from scheduler import start_scheduler, job
 
 # Initialize the database (creates tables if they don't exist)
 init_db()
@@ -48,6 +48,14 @@ def get_articles():
         "total": total,
         "articles": articles_data
     })
+
+@app.route('/restart', methods=['POST'])
+def restart():
+    try:
+        job()
+        return jsonify({"message": "Restarted successfully."}), 200
+    except Exception as e:
+        return jsonify({"message": str(e)}), 500
 
 if __name__ == '__main__':
     # For deployment, use the PORT environment variable if available
