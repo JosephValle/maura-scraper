@@ -7,7 +7,7 @@ KEYWORDS = [
     "safety system performance",
     "fuel performance",
     "artificial intelligence",
-    "AI",  # common shorter form
+    "AI",
     "hypersonic",
     "hypersonics",
     "quantum computing",
