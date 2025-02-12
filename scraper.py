@@ -57,8 +57,7 @@ def scrape_articles():
         feed = feedparser.parse(feed_url)
         # If 'feed' is malformed, skip
         if feed.bozo:
-            print(f" - Error details: {feed.bozo_exception}")
-            print(f" - Error parsing feed {feed_url}: possibly invalid RSS.")
+            print(f" - Error parsing feed {feed_url}: possibly invalid RSS. Details: {feed.bozo_exception}")
             continue
 
         for entry in feed.entries:
