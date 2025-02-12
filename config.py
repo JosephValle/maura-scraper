@@ -142,29 +142,23 @@ KEYWORDS = [
 RSS_FEEDS = [
     # Nuclear Energy
     "https://world-nuclear-news.org/RSS",
-    "https://www.energy.gov/ne/rss.xml", # Unoperational
+    "https://feeds.feedburner.com/EERECleanCitiesNews",
     "https://www.iaea.org/newscenter/news/rss",
     "https://www.neimagazine.com/rss/news/",
     "https://www.nuclearnewswire.com/feed/",
     "https://www.nuclearpowerdaily.com/rss/",
     "https://www.nrc.gov/reading-rm/doc-collections/news/rss.xml",
-    "https://www.ans.org/news/rss/", # Unoperational
+    "https://www.ans.org/news/feed/",
 
     # Defense Technology
-    "https://www.defensenews.com/rss/news/", # Unoperational
+    "https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml", 
     "https://breakingdefense.com/feed/",
-    "https://www.defense.gov/News/Press-Releases/rss/", # Unoperational
-    "https://www.militaryaerospace.com/rss", # Unoperational
-    "https://www.nationaldefensemagazine.org/rss", # Unoperational
-    "https://www.defenseone.com/rss/", # Unoperational
-    "https://www.janes.com/defence-news/rss", # Unoperational
+    "https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?max=10&ContentType=1&Site=945",
     "https://www.defenseworld.net/rss/",
     "https://www.army-technology.com/feed/",
     "https://www.naval-technology.com/feed/",
     "https://www.airforce-technology.com/feed/",
-    "https://www.spacewar.com/rss/", # Unoperational
     "https://www.defenseindustrydaily.com/feed/",
-    "https://www.defense-aerospace.com/rss.html", # Unoperational
     
     # Space Industry
     "https://www.nasa.gov/rss/dyn/breaking_news.rss",
@@ -172,17 +166,15 @@ RSS_FEEDS = [
     "https://www.space.com/feeds/all",
     "https://arstechnica.com/category/space/feed/",
     "https://spacepolicyonline.com/feed/",
-    "https://www.thespacereview.com/rss.xml", # Unoperational
-    "https://www.parabolicarc.com/feed/", # Unoperational
-    "https://spaceref.com/rss.xml", # Unoperational
+    "https://www.thespacereview.com/articles.xml",
+    "https://spaceref.com/rss",
     "https://www.orbitaltoday.com/feed/",
     "https://spacewatch.global/feed/",
-    "https://www.spacelegalissues.com/feed/", # Unoperational
     "https://spaceq.ca/feed/",
     "https://www.spacepolicyonline.com/feed/",
     "https://www.spaceintelreport.com/feed/",
     "https://spacewatch.global/feed/",
-    "https://www.spaceitbridge.com/feed/", # Unoperational
+    "https://www.spacebridge.com/feed/",
 ]
 
 
