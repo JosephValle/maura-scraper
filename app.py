@@ -1,5 +1,6 @@
 import os
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from database import SessionLocal, init_db, Article
 from scheduler import start_scheduler, job
 
@@ -7,6 +8,7 @@ from scheduler import start_scheduler, job
 init_db()
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 # Start the scheduler when the app starts
 start_scheduler()
