@@ -189,36 +189,71 @@ def get_articles():
 
 # ------------------ TAGS (GET / SET ALL) ------------------
 
+def _tags_with_has_articles(session, base_tags):
+    """
+    base_tags: Iterable[str] of tag names (already deduped/sorted)
+    Returns: [{"tag": str, "has_articles": bool}, ...]
+    """
+    results = []
+    for t in base_tags:
+        if not t:
+            continue
+        # Articles.tags stored like ",tag1,tag2,"; match whole tokens reliably
+        pattern = f'%,{t},%'
+        exists = session.query(Article.id).filter(Article.tags.like(pattern)).first() is not None
+        results.append({"tag": t, "has_articles": bool(exists)})
+    return results
+
 @app.route('/tags', methods=['GET'])
 def get_tags():
     """
-    Returns the canonical tag list if it has been explicitly set.
-    Otherwise, falls back to aggregating from Article.tags.
+    Returns:
+      - Default (legacy): array of strings (canonical or aggregated)
+      - If include_has_articles=1: array of objects [{tag, has_articles}]
     """
+    include_has = request.args.get('include_has_articles') == '1'
+
     canonical = _load_canonical_tags()
     if canonical is not None:
-        # Return exactly what was set previously
-        return jsonify(canonical)
+        if not include_has:
+            return jsonify(canonical)
+        with SessionLocal() as session:
+            enriched = _tags_with_has_articles(session, canonical)
+            return jsonify(enriched)
 
-    # Fallback: aggregate from articles (legacy behavior)
+    # Fallback: aggregate from Article.tags (legacy behavior)
     with SessionLocal() as session:
-        articles = session.query(Article.tags).filter(Article.tags != None).all()
-    tag_set = set()
-    for (tags_str,) in articles:
-        if tags_str:
-            tags = tags_str.strip(',').split(',')
-            tag_set.update(tags)
-    return jsonify(sorted(tag_set))
+        rows = session.query(Article.tags).filter(Article.tags != None).all()
+        tag_set = set()
+        for (tags_str,) in rows:
+            if tags_str:
+                # stored as ",a,b,c," → split safely
+                parts = tags_str.strip(',').split(',')
+                for p in parts:
+                    p = p.strip()
+                    if p:
+                        tag_set.add(p)
+
+        base_tags = sorted(tag_set)
+        if not include_has:
+            return jsonify(base_tags)
+
+        enriched = _tags_with_has_articles(session, base_tags)
+        return jsonify(enriched)
 
 @app.route('/tags', methods=['PUT', 'POST'])
 def set_tags():
     """
     Replace the canonical tag list with EXACTLY the list provided.
-    Request body (required):
-      {"tags": ["Tag A", "Tag B", ...]}
-    - The list is stored as-is (order preserved, except double quotes removed).
-    - Response echoes the sanitized tags.
+    Body (required): {"tags": ["Tag A", "Tag B", ...]}
+    Behavior:
+      - Always stores the sanitized list (order preserved; double quotes removed).
+      - Default response: {"tags": [ ...sanitized... ]}
+      - If query param include_has_articles=1 is present, respond with
+        a JSON array of objects: [{"tag": "...","has_articles": bool}, ...]
     """
+    include_has = request.args.get('include_has_articles') == '1'
+
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or "tags" not in data:
         return jsonify({"error": "Body must be an object with a 'tags' field."}), 400
@@ -227,11 +262,19 @@ def set_tags():
     if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
         return jsonify({"error": "'tags' must be a list of strings."}), 400
 
-    # Strip out all double quotes from each tag string
+    # Sanitize: strip double quotes; keep order/content otherwise
     tags = [t.replace('"', '') for t in tags]
 
     _save_canonical_tags(tags)
-    return jsonify({"tags": tags}), 200
+
+    if not include_has:
+        return jsonify({"tags": tags}), 200
+
+    # Enriched response path
+    with SessionLocal() as session:
+        enriched = _tags_with_has_articles(session, tags)
+    return jsonify(enriched), 200
+
 
 # ------------------ MAINTENANCE ------------------
 
