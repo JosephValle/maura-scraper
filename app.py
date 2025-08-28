@@ -19,6 +19,66 @@ start_scheduler()
 
 TAGS_STORE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tags.json")
 
+def _canon_token(t: str) -> str:
+    # Canonical tag token for matching
+    return (t or "").strip().lower()
+
+def _canon_tags_expr():
+    """
+    SQL expression that normalizes Article.tags for robust LIKE matching:
+    - lowercases the whole string
+    - removes single spaces adjacent to commas: ', ' -> ',' and ' ,' -> ','
+      (handles the common 'comma + optional space' formatting issue)
+    """
+    # func.replace is nested: first ', ' → ',', then ' ,' → ','
+    no_space_adjacent_commas = func.replace(
+        func.replace(Article.tags, ', ', ','), ' ,', ','
+    )
+    return func.lower(no_space_adjacent_commas)
+
+def _parse_tags_query_args():
+    """
+    Accepts both:
+      /articles?tags=alpha&tags=beta
+    and
+      /articles?tags=alpha,beta
+    Returns a list of canonical tokens (trimmed, lowercased), deduped.
+    """
+    # getlist captures repeated ?tags=...
+    items = request.args.getlist('tags')
+    # If client sent a single comma-joined value, split it
+    if len(items) == 1 and ',' in items[0]:
+        items = [p for p in items[0].split(',')]
+
+    out = []
+    seen = set()
+    for raw in items:
+        tok = _canon_token(raw)
+        if tok and tok not in seen:
+            seen.add(tok)
+            out.append(tok)
+    return out
+
+# --- has_articles enrichment ----------------------------------------------
+
+def _tags_with_has_articles(session, base_tags):
+    """
+    base_tags: Iterable[str] tag names as displayed (not necessarily canonicalized).
+    Robustly check existence regardless of whitespace/case artifacts in DB.
+    """
+    results = []
+    canon_expr = _canon_tags_expr()
+    for t in base_tags:
+        if not t:
+            continue
+        tok = _canon_token(t)
+        if not tok:
+            results.append({"tag": t, "has_articles": False})
+            continue
+        pattern = f'%,{tok},%'
+        exists = session.query(Article.id).filter(canon_expr.like(pattern)).first() is not None
+        results.append({"tag": t, "has_articles": bool(exists)})
+    return results
 
 def _load_canonical_tags():
     """
@@ -144,23 +204,85 @@ def delete_keyword_single(value):
         return jsonify({"removed": [v], "not_found": []}), 200
 
 # ------------------ ARTICLES ------------------
+def _canon_token(t: str) -> str:
+    # Canonical tag token for matching
+    return (t or "").strip().lower()
+
+def _canon_tags_expr():
+    """
+    SQL expression that normalizes Article.tags for robust LIKE matching:
+    - lowercases the whole string
+    - removes single spaces adjacent to commas: ', ' -> ',' and ' ,' -> ','
+      (handles the common 'comma + optional space' formatting issue)
+    """
+    # func.replace is nested: first ', ' → ',', then ' ,' → ','
+    no_space_adjacent_commas = func.replace(
+        func.replace(Article.tags, ', ', ','), ' ,', ','
+    )
+    return func.lower(no_space_adjacent_commas)
+
+def _parse_tags_query_args():
+    """
+    Accepts both:
+      /articles?tags=alpha&tags=beta
+    and
+      /articles?tags=alpha,beta
+    Returns a list of canonical tokens (trimmed, lowercased), deduped.
+    """
+    # getlist captures repeated ?tags=...
+    items = request.args.getlist('tags')
+    # If client sent a single comma-joined value, split it
+    if len(items) == 1 and ',' in items[0]:
+        items = [p for p in items[0].split(',')]
+
+    out = []
+    seen = set()
+    for raw in items:
+        tok = _canon_token(raw)
+        if tok and tok not in seen:
+            seen.add(tok)
+            out.append(tok)
+    return out
+
+# --- has_articles enrichment ----------------------------------------------
+
+def _tags_with_has_articles(session, base_tags):
+    """
+    base_tags: Iterable[str] tag names as displayed (not necessarily canonicalized).
+    Robustly check existence regardless of whitespace/case artifacts in DB.
+    """
+    results = []
+    canon_expr = _canon_tags_expr()
+    for t in base_tags:
+        if not t:
+            continue
+        tok = _canon_token(t)
+        if not tok:
+            results.append({"tag": t, "has_articles": False})
+            continue
+        pattern = f'%,{tok},%'
+        exists = session.query(Article.id).filter(canon_expr.like(pattern)).first() is not None
+        results.append({"tag": t, "has_articles": bool(exists)})
+    return results
+
+# --- /articles filter fix --------------------------------------------------
 
 @app.route('/articles', methods=['GET'])
 def get_articles():
     page = int(request.args.get('page', 1))
     page_size = int(request.args.get('page_size', 10))
 
-    tags_param = request.args.getlist('tags')
-    if tags_param == [''] or not tags_param:
-        tags_param = None
+    # Parse robustly: repeated & comma-joined
+    tokens = _parse_tags_query_args()
+    if not tokens:
+        tokens = None
 
     with SessionLocal() as session:
         query = session.query(Article)
 
-        if tags_param:
-            conditions = []
-            for tag in tags_param:
-                conditions.append(Article.tags.like(f'%,{tag.lower()},%'))
+        if tokens:
+            canon_expr = _canon_tags_expr()
+            conditions = [canon_expr.like(f'%,{tok},%') for tok in tokens]
             query = query.filter(or_(*conditions))
 
         query = query.order_by(Article.published_date.desc())
@@ -170,6 +292,8 @@ def get_articles():
         articles_data = []
         for article in articles:
             tags_list = article.tags.strip(',').split(',') if article.tags else []
+            # Optional: trim displayed tags
+            tags_list = [t.strip() for t in tags_list if t]
             articles_data.append({
                 "id": article.id,
                 "title": article.title,
@@ -186,6 +310,7 @@ def get_articles():
         "total": total,
         "articles": articles_data
     })
+
 
 # ------------------ TAGS (GET / SET ALL) ------------------
 
