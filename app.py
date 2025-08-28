@@ -1,10 +1,13 @@
 # server.py
 import os
+import json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from database import SessionLocal, init_db, Article, Keyword
 from scheduler import start_scheduler, job
 from sqlalchemy import or_
+
+# ------------------ APP / BOOTSTRAP ------------------
 
 # Initialize DB (no longer clears by default; set RESET_DB=1 to clear Articles)
 init_db()
@@ -13,6 +16,38 @@ app = Flask(__name__)
 CORS(app)
 
 start_scheduler()
+
+TAGS_STORE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tags.json")
+
+
+def _load_canonical_tags():
+    """
+    Load canonical tags from the JSON store.
+    Returns a list or None if the store doesn't exist or is invalid.
+    """
+    if not os.path.exists(TAGS_STORE_PATH):
+        return None
+    try:
+        with open(TAGS_STORE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict) and isinstance(data.get("tags"), list):
+            # Preserve order as stored
+            return data["tags"]
+    except Exception:
+        pass
+    return None
+
+
+def _save_canonical_tags(tags_list):
+    """
+    Save canonical tags to the JSON store. Expects a list of strings.
+    Does not alter order or content; caller guarantees shape.
+    """
+    tmp_path = TAGS_STORE_PATH + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump({"tags": tags_list}, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, TAGS_STORE_PATH)
+
 
 @app.route('/')
 def index():
@@ -152,8 +187,20 @@ def get_articles():
         "articles": articles_data
     })
 
+# ------------------ TAGS (GET / SET ALL) ------------------
+
 @app.route('/tags', methods=['GET'])
 def get_tags():
+    """
+    Returns the canonical tag list if it has been explicitly set.
+    Otherwise, falls back to aggregating from Article.tags.
+    """
+    canonical = _load_canonical_tags()
+    if canonical is not None:
+        # Return exactly what was set previously
+        return jsonify(canonical)
+
+    # Fallback: aggregate from articles (legacy behavior)
     with SessionLocal() as session:
         articles = session.query(Article.tags).filter(Article.tags != None).all()
     tag_set = set()
@@ -163,6 +210,34 @@ def get_tags():
             tag_set.update(tags)
     return jsonify(sorted(tag_set))
 
+
+@app.route('/tags', methods=['PUT', 'POST'])
+def set_tags():
+    """
+    Replace the canonical tag list with EXACTLY the list provided.
+    Request body (required):
+      {"tags": ["Tag A", "Tag B", ...]}
+    - The list is stored as-is (order preserved, strings unmodified).
+    - Response echoes EXACTLY the tags received.
+    """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or "tags" not in data:
+        return jsonify({"error": "Body must be an object with a 'tags' field."}), 400
+
+    tags = data["tags"]
+    if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+        return jsonify({"error": "'tags' must be a list of strings."}), 400
+
+    # Preserve caller's exact list, but ensure it's JSON-serializable and safe.
+    # If you want to remove duplicates but keep first occurrence, uncomment:
+    # tags = list(dict.fromkeys(tags))
+
+    _save_canonical_tags(tags)
+    # Echo back EXACTLY what was received, per your requirement.
+    return jsonify({"tags": tags}), 200
+
+# ------------------ MAINTENANCE ------------------
+
 @app.route('/restart', methods=['POST'])
 def restart():
     try:
@@ -170,6 +245,7 @@ def restart():
         return jsonify({"message": "Restarted successfully."}), 200
     except Exception as e:
         return jsonify({"message": str(e)}), 500
+
 
 if __name__ == '__main__':
     # For deployment, use the PORT environment variable if available
