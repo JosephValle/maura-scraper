@@ -210,15 +210,14 @@ def get_tags():
             tag_set.update(tags)
     return jsonify(sorted(tag_set))
 
-
 @app.route('/tags', methods=['PUT', 'POST'])
 def set_tags():
     """
     Replace the canonical tag list with EXACTLY the list provided.
     Request body (required):
       {"tags": ["Tag A", "Tag B", ...]}
-    - The list is stored as-is (order preserved, strings unmodified).
-    - Response echoes EXACTLY the tags received.
+    - The list is stored as-is (order preserved, except double quotes removed).
+    - Response echoes the sanitized tags.
     """
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or "tags" not in data:
@@ -228,12 +227,10 @@ def set_tags():
     if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
         return jsonify({"error": "'tags' must be a list of strings."}), 400
 
-    # Preserve caller's exact list, but ensure it's JSON-serializable and safe.
-    # If you want to remove duplicates but keep first occurrence, uncomment:
-    # tags = list(dict.fromkeys(tags))
+    # Strip out all double quotes from each tag string
+    tags = [t.replace('"', '') for t in tags]
 
     _save_canonical_tags(tags)
-    # Echo back EXACTLY what was received, per your requirement.
     return jsonify({"tags": tags}), 200
 
 # ------------------ MAINTENANCE ------------------
