@@ -1,11 +1,11 @@
-# server.py
+# app.py
 import os
 import json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from database import SessionLocal, init_db, Article, Keyword
 from scheduler import start_scheduler, job
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 
 # ------------------ APP / BOOTSTRAP ------------------
 
