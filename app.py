@@ -266,16 +266,57 @@ def _tags_with_has_articles(session, base_tags):
     return results
 
 # --- /articles filter fix --------------------------------------------------
+# ------------------ ARTICLES ------------------
 
-@app.route('/articles', methods=['GET'])
-def get_articles():
-    page = int(request.args.get('page', 1))
-    page_size = int(request.args.get('page_size', 10))
+@app.route('/articles/search', methods=['POST'])
+def search_articles():
+    """
+    Search articles with optional tag filters.
+    Accepts JSON body instead of long query strings.
 
-    # Parse robustly: repeated & comma-joined
-    tokens = _parse_tags_query_args()
-    if not tokens:
-        tokens = None
+    Example body:
+      {
+        "page": 1,
+        "page_size": 25,
+        "tags": ["AI", "SpaceX", "Fusion Energy"]
+      }
+
+    Returns:
+      {
+        "page": 1,
+        "page_size": 25,
+        "total": <int>,
+        "articles": [ ... ]
+      }
+    """
+    data = request.get_json(silent=True) or {}
+
+    # Defaults + guards
+    try:
+        page = int(data.get("page", 1))
+    except Exception:
+        page = 1
+    try:
+        page_size = int(data.get("page_size", 10))
+    except Exception:
+        page_size = 10
+
+    page = max(1, page)
+    page_size = max(1, min(page_size, 500))  # clamp upper bound
+
+    # Normalize tags
+    raw_tags = data.get("tags", [])
+    if not isinstance(raw_tags, list):
+        return jsonify({"error": "'tags' must be a list of strings"}), 400
+
+    tokens = []
+    seen = set()
+    for t in raw_tags:
+        if isinstance(t, str):
+            tok = _canon_token(t)
+            if tok and tok not in seen:
+                seen.add(tok)
+                tokens.append(tok)
 
     with SessionLocal() as session:
         query = session.query(Article)
@@ -287,18 +328,27 @@ def get_articles():
 
         query = query.order_by(Article.published_date.desc())
         total = query.count()
-        articles = query.offset((page - 1) * page_size).limit(page_size).all()
+        articles = (
+            query.offset((page - 1) * page_size)
+                 .limit(page_size)
+                 .all()
+        )
 
         articles_data = []
         for article in articles:
-            tags_list = article.tags.strip(',').split(',') if article.tags else []
-            # Optional: trim displayed tags
+            tags_list = (
+                article.tags.strip(",").split(",")
+                if article.tags else []
+            )
             tags_list = [t.strip() for t in tags_list if t]
             articles_data.append({
                 "id": article.id,
                 "title": article.title,
                 "url": article.url,
-                "published_date": article.published_date.isoformat() if article.published_date else None,
+                "published_date": (
+                    article.published_date.isoformat()
+                    if article.published_date else None
+                ),
                 "summary": article.summary,
                 "source": article.source,
                 "tags": tags_list,
@@ -309,7 +359,8 @@ def get_articles():
         "page_size": page_size,
         "total": total,
         "articles": articles_data
-    })
+    }), 200
+
 
 
 # ------------------ TAGS (GET / SET ALL) ------------------
